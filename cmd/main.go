@@ -14,6 +14,23 @@ import (
 // Глобальная переменная для хранения значения rtp
 var rtp float64
 
+// Структура для хранения мультипликатора и его вероятности
+type payout struct {
+	Multiplier  float64
+	Probability float64
+}
+
+// Таблица выплат с заданными вероятностями.
+// Сумма произведений (Multiplier * Probability) должна быть равна RTP.
+// RTP = (0.0 * 0.9) + (2.0 * 0.08) + (5.0 * 0.015) + (100.0 * 0.0049) + (1000.0 * 0.0001) = 0.8
+var payouts = []payout{
+	{Multiplier: 0.0, Probability: 0.9},
+	{Multiplier: 2.0, Probability: 0.08},
+	{Multiplier: 5.0, Probability: 0.015},
+	{Multiplier: 100.0, Probability: 0.0049},
+	{Multiplier: 1000.0, Probability: 0.0001},
+}
+
 // MultiplierResponse - структура для вывода JSON
 type MultiplierResponse struct {
 	Result float64 `json:"result"`
@@ -24,21 +41,22 @@ func getHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	// Генерируем случайное число от 0 до 1
-	randomNumber := rand.Float64()
-
-	var multiplier float64
-
-	// Если заданный RTP равен 1.0 всегда возвращаем "успех"
-	if rtp == 1.0 {
-		multiplier = 10000.0
-	} else if randomNumber < rtp {
-		// Если случайное число меньше RTP возвращаем "успех"
-		multiplier = 10000.0 // Наибольшее число в допустимом диапазоне
-	} else {
-		// В противном случае возвращаем "неудачу"
-		multiplier = 1.0 // Наименьшее число в допустимом диапазоне
+	// Функция для генерации случайного мультипликатора на основе таблицы выплат.
+	generateMultiplier := func() float64 {
+		p := rand.Float64()
+		cumulativeProbability := 0.0
+		for _, payout := range payouts {
+			cumulativeProbability += payout.Probability
+			if p < cumulativeProbability {
+				return payout.Multiplier
+			}
+		}
+		// Запасной вариант, если что-то пойдет не так
+		return 0.0
 	}
+
+	// Генерируем мультипликатор
+	multiplier := generateMultiplier()
 
 	// Создаем объект ответа
 	response := MultiplierResponse{
@@ -51,8 +69,8 @@ func getHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Логируем сгенерированный мультипликатор и случайное число для отладки
-	log.Printf("Сгенерированный мультипликатор: %.2f (случайное число: %.2f, rtp: %.2f)\n", multiplier, randomNumber, rtp)
+	// Логируем сгенерированный мультипликатор для отладки
+	log.Printf("Сгенерированный мультипликатор: %.2f\n", multiplier)
 }
 
 func main() {

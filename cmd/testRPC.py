@@ -1,48 +1,45 @@
 import requests
-import json
-import time
+import sys
 
-SERVICE_URL = "http://localhost:64333/get"
+# Проверка наличия аргументов командной строки
+if len(sys.argv) < 2:
+    print("Использование: python inspector.py <количество запросов>")
+    sys.exit(1)
 
-NUM_REQUESTS = 11000
+try:
+    num_requests = int(sys.argv[1])
+except ValueError:
+    print("Количество запросов должно быть целым числом.")
+    sys.exit(1)
 
-print("Запуск теста RTP")
-print(f"Отправится {NUM_REQUESTS} запросов на {SERVICE_URL}")
-
-total_sum = 0
+server_url = "http://localhost:64333/get"
+total_winnings = 0.0
 successful_requests = 0
 
-start_time = time.time()
+print(f"Отправка {num_requests} запросов на {server_url}...")
 
-for i in range(NUM_REQUESTS):
+# Отправка запросов и подсчет результатов
+for i in range(num_requests):
     try:
-        response = requests.get(SERVICE_URL)
-        response.raise_for_status()
-        
-        data = json.loads(response.text)
-        
-        multiplier = data["result"]
-        
-         # Если multiplier > 1.0 (то есть, это 10000.0), считаем его за "успех"
-        if multiplier > 1.0:
-            total_sum += 1
-        
-        successful_requests += 1
+        response = requests.get(server_url)
+        if response.status_code == 200:
+            multiplier_data = response.json()
+            multiplier = float(multiplier_data.get('result', 0.0))
+            total_winnings += multiplier
+            if multiplier > 0.0:  # Считаем успешными все выигрыши, кроме 0
+                successful_requests += 1
 
     except requests.exceptions.RequestException as e:
         print(f"Ошибка при выполнении запроса: {e}")
-        break
+        sys.exit(1)
 
-end_time = time.time()
-duration = end_time - start_time
+# Расчет итогового RTP
+# RTP = (общая_сумма_выигрышей / общее_количество_запросов)
+final_rtp = total_winnings / num_requests
 
-# Расчет RTP на основе результатов теста
-if successful_requests > 0:
-    calculated_rtp = total_sum / successful_requests
-    print("\n--- Результаты теста ---")
-    print(f"Количество успешных запросов: {successful_requests}")
-    print(f"Количество 'успешных' мультипликаторов: {total_sum}")
-    print(f"Рассчитанный RTP (отношение 'успехов' к общему числу запросов): {calculated_rtp:.4f}")
-    print(f"Тест занял: {duration:.2f} секунды")
-else:
-    print("Не удалось выполнить ни одного запроса")
+print("\n--- Результаты теста ---")
+print(f"Количество запросов: {num_requests}")
+print(f"Количество выигрышных спинов: {successful_requests}")
+print(f"Общая сумма выигрышей: {total_winnings:.2f}")
+print(f"Рассчитанный RTP: {final_rtp:.4f}")
+print(f"Тест занял: {response.elapsed.total_seconds():.2f} секунды")
