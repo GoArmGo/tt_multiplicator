@@ -20,32 +20,25 @@ type payout struct {
 	Probability float64
 }
 
-// Таблица выплат с заданными вероятностями.
-// Сумма произведений (Multiplier * Probability) должна быть равна RTP.
-// RTP = (0.0 * 0.9) + (2.0 * 0.08) + (5.0 * 0.015) + (100.0 * 0.0049) + (1000.0 * 0.0001) = 0.8
-var payouts = []payout{
-	{Multiplier: 0.0, Probability: 0.9},
-	{Multiplier: 2.0, Probability: 0.08},
-	{Multiplier: 5.0, Probability: 0.015},
-	{Multiplier: 100.0, Probability: 0.0049},
-	{Multiplier: 1000.0, Probability: 0.0001},
-}
-
-// MultiplierResponse - структура для вывода JSON
+// MultiplierResponse структура для вывода JSON
 type MultiplierResponse struct {
 	Result float64 `json:"result"`
 }
 
-// getHandler генерирует мультипликатор на основе глобальной переменной rtp
-func getHandler(w http.ResponseWriter, r *http.Request) {
+// Handler структура которая хранит таблицу выплат и реализует интерфейс http.Handler
+type Handler struct {
+	payouts []payout
+}
 
+// ServeHTTP реализует интерфейс http.Handler
+func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// Функция для генерации случайного мультипликатора на основе таблицы выплат.
+	// Функция для генерации случайного мультипликатора на основе таблицы выплат
 	generateMultiplier := func() float64 {
 		p := rand.Float64()
 		cumulativeProbability := 0.0
-		for _, payout := range payouts {
+		for _, payout := range h.payouts {
 			cumulativeProbability += payout.Probability
 			if p < cumulativeProbability {
 				return payout.Multiplier
@@ -73,6 +66,64 @@ func getHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Сгенерированный мультипликатор: %.2f\n", multiplier)
 }
 
+// generatePayouts создает таблицу выплат на основе заданного RTP
+func generatePayouts(rtp float64) []payout {
+	// Базовые выигрыши и их относительные веса
+	// Сумма этих весов не важна, важны только их пропорции
+	basePayouts := []struct {
+		Multiplier float64
+		Weight     float64
+	}{
+		{Multiplier: 2.0, Weight: 80.0},
+		{Multiplier: 5.0, Weight: 15.0},
+		{Multiplier: 100.0, Weight: 4.9},
+		{Multiplier: 1000.0, Weight: 0.1},
+	}
+
+	// Расчет общей суммы "стоимости" всех выигрышей и их весов
+	totalPayoutValue := 0.0
+	totalWeight := 0.0
+	for _, p := range basePayouts {
+		totalPayoutValue += p.Multiplier * p.Weight
+		totalWeight += p.Weight
+	}
+
+	// Рассчитываем общую вероятность выигрыша (totalWinProbability)
+	// RTP = totalWinProbability * (totalPayoutValue / totalWeight)
+	// => totalWinProbability = RTP * totalWeight / totalPayoutValue
+	if totalPayoutValue == 0 {
+		return []payout{{Multiplier: 0.0, Probability: 1.0}}
+	}
+	totalWinProbability := rtp * totalWeight / totalPayoutValue
+
+	// Если рассчитанная вероятность выигрыша больше 1, значит заданный RTP не может быть достигнут с
+	// этими мультипликаторами. В реале нужно обработать эту ошибку.
+	if totalWinProbability > 1.0 {
+		log.Printf("Внимание: Заданный RTP (%.2f) слишком высок для текущей таблицы выплат.", rtp)
+		totalWinProbability = 1.0
+	}
+
+	// Создаем финальную таблицу выплат
+	payouts := make([]payout, len(basePayouts)+1)
+
+	// Добавляем проигрыш (0.0)
+	payouts[0] = payout{Multiplier: 0.0, Probability: 1.0 - totalWinProbability}
+
+	// Добавляем выигрыши с рассчитанными вероятностями
+	for i, p := range basePayouts {
+		winProbability := totalWinProbability * (p.Weight / totalWeight)
+		payouts[i+1] = payout{Multiplier: p.Multiplier, Probability: winProbability}
+	}
+
+	// Логируем финальные вероятности
+	log.Printf("Сгенерирована таблица выплат для RTP=%.2f:", rtp)
+	for _, p := range payouts {
+		log.Printf("  Множитель: %.2f, Вероятность: %.4f", p.Multiplier, p.Probability)
+	}
+
+	return payouts
+}
+
 func main() {
 	// Устанавливаем сид для генератора случайных чисел, чтобы получать разные числа при каждом запуске
 	rand.Seed(time.Now().UnixNano())
@@ -87,9 +138,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Генерируем таблицу выплат на основе заданного RTP
+	payouts := generatePayouts(rtp)
+
 	// Создаем новый ServeMux
 	mux := http.NewServeMux()
-	mux.HandleFunc("/get", getHandler)
+	mux.Handle("/get", &Handler{payouts: payouts})
 
 	// Определяем адрес сервера
 	serverAddr := "localhost:64333"
