@@ -20,12 +20,12 @@ type payout struct {
 	Probability float64
 }
 
-// MultiplierResponse структура для вывода JSON
+// MultiplierResponse - структура для вывода JSON
 type MultiplierResponse struct {
 	Result float64 `json:"result"`
 }
 
-// Handler структура которая хранит таблицу выплат и реализует интерфейс http.Handler
+// Handler - структура, которая хранит таблицу выплат и реализует интерфейс http.Handler
 type Handler struct {
 	payouts []payout
 }
@@ -34,7 +34,7 @@ type Handler struct {
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// Функция для генерации случайного мультипликатора на основе таблицы выплат
+	// Функция для генерации случайного мультипликатора на основе таблицы выплат.
 	generateMultiplier := func() float64 {
 		p := rand.Float64()
 		cumulativeProbability := 0.0
@@ -66,10 +66,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Сгенерированный мультипликатор: %.2f\n", multiplier)
 }
 
-// generatePayouts создает таблицу выплат на основе заданного RTP
+// generatePayouts создает таблицу выплат на основе заданного RTP.
 func generatePayouts(rtp float64) []payout {
-	// Базовые выигрыши и их относительные веса
-	// Сумма этих весов не важна, важны только их пропорции
+	// Базовые выигрыши и их относительные веса.
+	// Сумма этих весов не важна, важны только их пропорции.
 	basePayouts := []struct {
 		Multiplier float64
 		Weight     float64
@@ -96,10 +96,11 @@ func generatePayouts(rtp float64) []payout {
 	}
 	totalWinProbability := rtp * totalWeight / totalPayoutValue
 
-	// Если рассчитанная вероятность выигрыша больше 1, значит заданный RTP не может быть достигнут с
-	// этими мультипликаторами. В реале нужно обработать эту ошибку.
-	if totalWinProbability > 1.0 {
-		log.Printf("Внимание: Заданный RTP (%.2f) слишком высок для текущей таблицы выплат.", rtp)
+	// Важная проверка: если общая вероятность выигрыша превышает 1.0, это означает,
+	// что заданный RTP не может быть достигнут с текущими множителями,
+	// так как RTP = 1.0 - это максимальное значение.
+	if totalWinProbability >= 1.0 {
+		log.Printf("Внимание: Заданный RTP (%.2f) равен или выше максимального. Вероятность проигрыша установлена в 0.0.", rtp)
 		totalWinProbability = 1.0
 	}
 
